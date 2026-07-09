@@ -3355,9 +3355,9 @@ let reconcileCheckMode = false; // ✓ ויזואלי מופיע רק כשההפ
 let noteCheckForceQty = false;  // המשתמש דחה את הפתרון הוודאי וביקש הזנה ידנית
 let ncQtyAdvTimer = null;       // קפיצה אוטומטית מושהית בין שדות כמות
 let ncPriceAdvTimer = null;     // קפיצה אוטומטית מושהית בין שדות מחיר
-let ncPromoResult = null;       // תוצאת בדיקת מבצעים לפי כוכבית בתעודת הספק
+let ncPromoResult = null;       // תוצאת בדיקת ההנחות מול הנייר (mismatch)
 let reconcileSupplierDiscount = 0;       // הנחת ספק/מבצע שנמצאה בתעודה (ללא מע״מ)
-let reconcileSupplierPromoItems = [];    // מוצרים שסומנו בכוכבית בתעודה
+let reconcileSupplierPromoItems = [];    // לא בשימוש בזוגלובק — נשמר לתאימות תעודות ישנות
 let reconcilePromoMismatchItems = [];     // מוצרים שההנחה בפועל בתעודה שונה מההנחה הקבועה השמורה במערכת
 let reconcileSupplierCreditClaim = null;     // דרישת זיכוי פתוחה מול ספק כשהמבצע מגיע אך לא הופיע בתעודה
 function ncCls(r) {
@@ -4551,7 +4551,7 @@ function presentReconcileSummary(lines, ex, open, extra) {
     '</div>';
   }).join('');
   const discountSummary = (Number(extra.supplierDiscount) || 0) > 0
-    ? '<div class="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs font-bold text-emerald-800"><i class="fa-solid fa-percent"></i> הנחת ספק / מבצע: −₪' + fmtMoney(extra.supplierDiscount) + (extra.supplierPromoItems && extra.supplierPromoItems.length ? '<div class="text-[11px] mt-1">סומנו בכוכבית: ' + extra.supplierPromoItems.map(x => x.name).join(' · ') + '</div>' : '') + '</div>'
+    ? '<div class="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs font-bold text-emerald-800"><i class="fa-solid fa-percent"></i> הנחת ספק / מבצע: −₪' + fmtMoney(extra.supplierDiscount) + (extra.supplierPromoItems && extra.supplierPromoItems.length ? '<div class="text-[11px] mt-1">מוצרים: ' + extra.supplierPromoItems.map(x => x.name).join(' · ') + '</div>' : '') + '</div>'
     : '';
   const promoMismatchSummary = (extra.supplierPromoMismatchItems && extra.supplierPromoMismatchItems.length)
     ? '<div class="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-xs font-bold text-amber-800"><i class="fa-solid fa-triangle-exclamation"></i> מבצע שמוגדר במערכת לא הופיע בתעודת הספק<div class="text-[11px] mt-1">' + extra.supplierPromoMismatchItems.map(x => x.name).join(' · ') + '</div></div>'
@@ -4985,7 +4985,7 @@ function renderReceiptsHistory() {
           (rc.noteTotalInc != null ? '<div class="mt-1 pt-1 border-t border-rose-200 text-rose-700/80">תעודת ספק ₪' + fmtMoney(rc.noteTotalInc) + (rc.noteParts && rc.noteParts.length > 1 ? ' (' + rc.noteParts.map(x => '₪' + fmtMoney(x)).join(' + ') + ')' : '') + ' · שולם בפועל ₪' + fmtMoney(rc.totalExVat) + '</div>' : '') +
         '</div>' : '') +
         ((di.priceOffsets && di.priceOffsets.length) ? '<div class="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs text-emerald-800"><div class="font-black mb-1"><i class="fa-solid fa-scale-balanced"></i> קיזוז פנימי לפי מחיר זהה</div>' + di.priceOffsets.map(o => '<div class="font-bold">' + receiptSideText(o.shortItems) + ' ⇄ ' + receiptSideText(o.overItems) + ' · ₪' + fmtMoney(o.price) + '</div>').join('') + '</div>' : '') +
-        ((Number(rc.supplierDiscount) || 0) > 0 ? '<div class="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs text-emerald-800"><div class="font-black mb-1"><i class="fa-solid fa-percent"></i> אומתה עם מבצע / הנחת ספק</div><div class="font-bold">הנחה: −₪' + fmtMoney(rc.supplierDiscount) + ((rc.grossExVat != null) ? ' · לפני מבצע: ₪' + fmtMoney(rc.grossExVat) : '') + '</div>' + ((rc.supplierPromoItems || []).length ? '<div class="text-[11px] mt-1">כוכבית: ' + (rc.supplierPromoItems || []).map(x => x.name).join(' · ') + '</div>' : '') + '</div>' : '') +
+        ((Number(rc.supplierDiscount) || 0) > 0 ? '<div class="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs text-emerald-800"><div class="font-black mb-1"><i class="fa-solid fa-percent"></i> אומתה עם מבצע / הנחת ספק</div><div class="font-bold">הנחה: −₪' + fmtMoney(rc.supplierDiscount) + ((rc.grossExVat != null) ? ' · לפני מבצע: ₪' + fmtMoney(rc.grossExVat) : '') + '</div>' + ((rc.supplierPromoItems || []).length ? '<div class="text-[11px] mt-1">מוצרים: ' + (rc.supplierPromoItems || []).map(x => x.name).join(' · ') + '</div>' : '') + '</div>' : '') +
         supplierCreditClaimCardHtml(rc) +
         (((rc.supplierPromoMismatchItems || []).length) ? '<div class="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800"><div class="font-black mb-1"><i class="fa-solid fa-triangle-exclamation"></i> מבצע מוגדר במערכת אך לא הופיע אצל הספק</div><div class="font-bold">' + (rc.supplierPromoMismatchItems || []).map(x => x.name).join(' · ') + '</div></div>' : '') +
         (rc.offsetClosed ? '<div class="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs font-black text-emerald-700"><i class="fa-solid fa-scale-balanced"></i> קוזז מול תעודה אחרת — סגור</div>' :
