@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>קליטת זוגלובק - v1.1</title>
+    <title>קליטת זוגלובק - v1.2</title>
 
     <!-- PWA: התקנה כאפליקציה במסך מלא (אנדרואיד + אייפון) -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -93,7 +93,7 @@
 
     <!-- תוכן ראשי -->
     <main id="app" class="max-w-3xl mx-auto p-4"></main>
-    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v1.1 · ידני</div>
+    <div id="verBadge" class="fixed bottom-1 left-2 text-[10px] font-black text-slate-300 z-[45] pointer-events-none select-none">v1.2 · סכומים</div>
 
     <!-- כפתור סיום הזמנה (צף) -->
     <div id="cartWrap" class="fixed bottom-6 inset-x-0 flex justify-center pointer-events-none px-4 z-20">
@@ -3807,7 +3807,7 @@ function renderReconcile() {
     : '';
   const summary = '<div class="rounded-2xl p-4 shadow-sm mb-3 ' + (absGap <= 1 ? (explained ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-200') : 'bg-amber-50 border border-amber-200') + '">' +
     '<div class="flex justify-between text-sm font-bold ' + (absGap <= 1 && !explained ? 'text-emerald-900' : 'text-amber-900') + '"><span>תעודת הספק</span><span>₪' + fmtMoney(note || 0) + '</span></div>' +
-    '<div class="flex justify-between text-sm font-bold mt-1 ' + (absGap <= 1 && !explained ? 'text-emerald-900' : 'text-amber-900') + '"><span>מחירי שורות מהנייר</span><span>₪' + fmtMoney(reconcileNoteInc()) + '</span></div>' +
+    '<div class="flex justify-between text-sm font-bold mt-1 ' + (absGap <= 1 && !explained ? 'text-emerald-900' : 'text-amber-900') + '"><span>' + ((reconcileData || []).some(l => l.paperTotal != null) ? 'סכומי שורות מהנייר' : 'סכומי שורות לפי המערכת') + '</span><span>₪' + fmtMoney(reconcileNoteInc()) + '</span></div>' +
     discountLine +
     '<div class="flex justify-between text-lg font-black mt-1.5 pt-1.5 border-t ' + (absGap <= 1 ? (explained ? 'border-amber-200 text-amber-700' : 'border-emerald-200 text-emerald-700') : 'border-amber-200 text-rose-700') + '"><span>' + (absGap <= 1 ? (explained ? 'הוסבר — הפרש פתוח' : 'מאוזן') : dir) + '</span><span>' + (absGap <= 1 ? (explained ? '₪' + fmtMoney(r2(asgTop.sh - asgTop.ov > 0 ? asgTop.sh - asgTop.ov : asgTop.ov - asgTop.sh)) : '✓') : '₪' + fmtMoney(absGap)) + '</span></div>' +
   '</div>';
@@ -3969,6 +3969,7 @@ function renderReconcile() {
       '<div class="text-xs text-slate-500 mb-3 leading-relaxed">מספר אחד לכל שורה — <b>הסכום הסופי</b> שמודפס בעמודה הימנית של תעודת הספק. אל תקליד אחוזי הנחה; המערכת תגזור אותם לבד.</div>' +
       '<div id="ncRows" class="space-y-1.5">' + ncPriceRowsHtml() + '</div>' +
       '<button data-role="nc-price-apply" class="btn-tap w-full bg-blue-600 text-white rounded-xl py-3 font-black mt-3"><i class="fa-solid fa-check"></i> החל סכומים</button>' +
+      '<button data-role="nc-price-fill" class="btn-tap w-full mt-2 bg-white border border-slate-200 text-slate-500 rounded-xl py-2 font-bold text-[11px]">השורה תואמת בדיוק? מלא הכל לפי המערכת</button>' +
     '</div>';
   }
   else if (rcStep === 'discounts') {
@@ -4090,9 +4091,11 @@ function ncPriceRowsHtml() {
     const l = (reconcileData || []).find(x => x.productId === r.pid);
     const q = Number((r.q != null && r.q !== '') ? r.q : (l && l.noteQty != null ? l.noteQty : 0)) || 0;
     const expect = l ? reconLineTotal(l, q) : (p ? zgLine(zgGross(p), zgPct(p), q) : 0);
-    const val = (r.total != null && r.total !== '') ? r.total : (l && l.paperTotal != null ? l.paperTotal : r2(expect));
+    // ריק בכוונה. אם נמלא מראש את מה שהמערכת מצפה לו, "החל סכומים" יאשר את עצמו
+    // ושלב ההנחות לא יוכל לתפוס כלום. הערך הצפוי מופיע כרמז בלבד.
+    const val = (r.total != null && r.total !== '') ? r.total : (l && l.paperTotal != null ? l.paperTotal : '');
     return '<div class="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl p-2.5">' +
-      '<input data-role="nc-price" data-i="' + noteCheckRows.indexOf(r) + '" type="text" inputmode="decimal" value="' + val + '" placeholder="סה״כ" dir="ltr" onfocus="this.select()" class="w-24 h-12 text-center text-lg font-black border-2 border-blue-300 bg-white rounded-xl outline-none focus:border-blue-500">' +
+      '<input data-role="nc-price" data-i="' + noteCheckRows.indexOf(r) + '" data-expect="' + r2(expect) + '" type="text" inputmode="decimal" value="' + val + '" placeholder="' + fmtMoney(expect) + '" dir="ltr" onfocus="this.select()" class="w-24 h-12 text-center text-lg font-black border-2 border-blue-300 bg-white rounded-xl outline-none focus:border-blue-500 placeholder:text-slate-300 placeholder:font-bold">' +
       '<div class="flex-1 min-w-0"><div class="font-black text-slate-700 text-sm truncate">' + (p ? p.name : '') + '</div>' +
       '<div class="text-[11px] text-slate-400">' + (q || '—') + ' × ₪' + fmtMoney(l ? l.gross : zgGross(p)) + ' ' + zgPctBadge(l ? l.pct : zgPct(p)) + ' · צפוי ₪' + fmtMoney(expect) + '</div></div>' +
     '</div>';
@@ -6472,12 +6475,20 @@ app.addEventListener('click', (e) => {
     rcStep = 'prices';
     if (currentView === 'reconcile') renderReconcile();
   }
+  else if (role === 'nc-price-fill') {
+    const box = $('ncRows');
+    if (box) box.querySelectorAll('input[data-role="nc-price"]').forEach(inp => { if (!inp.value) inp.value = inp.dataset.expect; });
+    buzz(10);
+    showToast('מולא לפי המערכת — ודא מול הנייר לפני שתחיל', null, null, 3200);
+  }
   else if (role === 'nc-price-apply') {
+    const total = ncPaperRows().length;
     const n = applyNotePricesFromInputs();
     reconcileSupplierDiscount = 0; reconcileSupplierPromoItems = []; reconcilePromoMismatchItems = []; ncPromoResult = null;
     reconcileSupplierCreditClaim = null;
     buzz(18);
     if (!n) { showToast('לא הוזנו סכומים', null, null, 2200); return; }
+    if (n < total) showToast((total - n) + ' שורות ללא סכום — נלקח המחיר מהמערכת', null, null, 3600);
     const mismatch = computeDiscountMismatch();
     if (mismatch.hasMismatch) {
       reconcilePromoMismatchItems = mismatch.items || [];
