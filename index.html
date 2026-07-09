@@ -3605,25 +3605,78 @@ function detectiveApply(gi, pid) {
 // בדיקה ידנית: העובד מוצא בנייר את המוצר החסר/העודף ומשייך אותו — בלי ברקודים
 let manualSearchTerm = '';
 let manualAssigned = []; // שיוכים בסשן הידני הנוכחי — לתצוגה וביטול
+// כמה יחידות מהמוצר הזה מסבירות בדיוק את ההפרש? 0 = לא מתחלק
+function manualFitQty(price, absGap) {
+  if (!(price > 0)) return 0;
+  const q = Math.round(absGap / price);
+  return (q >= 1 && Math.abs(r2(q * price) - absGap) <= 0.05) ? q : 0;
+}
+
+// שורה של מוצר שנסרק — מחירון והנחה ניתנים לעריכה כאן ומשפיעים על ההפרש מיד
+function manualScannedRowHtml(l, absGap) {
+  const price = reconUnitNet(l);
+  const fit = manualFitQty(price, absGap);
+  const promo = (l.promoOn && (Number(l.promoPct) || 0) > 0)
+    ? '<span class="text-[10px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">מבצע ' + r2(l.promoPct) + '%</span>' : '';
+  return '<div data-mrow="' + l.productId + '" class="rounded-xl border ' + (fit ? 'border-indigo-300 bg-indigo-50/50' : 'border-slate-200 bg-white') + ' p-2.5">' +
+    '<button data-role="manual-pick" data-id="' + l.productId + '" class="btn-tap w-full flex items-center justify-between gap-2 text-right">' +
+      '<span class="font-black text-slate-800 text-sm truncate">' + l.name + '</span>' +
+      '<span class="text-[11px] font-black whitespace-nowrap ' + (fit ? 'text-indigo-700' : 'text-slate-300') + '">' + (fit ? fit + ' יח׳ ←' : '') + '</span>' +
+    '</button>' +
+    '<div class="flex items-center gap-1 mt-1.5 text-[11px] text-slate-400 flex-wrap">' +
+      '<span class="font-bold text-slate-500">נסרקו ' + (Number(l.received) || 0) + '</span>' +
+      '<span class="text-slate-300">·</span>' +
+      'מחירון ₪<input data-role="manual-price" data-id="' + l.productId + '" type="text" inputmode="decimal" value="' + (l.gross != null ? l.gross : '') + '" class="w-14 text-center border border-slate-200 rounded px-1 py-0.5 outline-none focus:border-blue-500">' +
+      'הנחה <input data-role="manual-disc" data-id="' + l.productId + '" type="text" inputmode="decimal" value="' + (l.pct != null ? l.pct : 0) + '" class="w-12 text-center border border-slate-200 rounded px-1 py-0.5 outline-none focus:border-emerald-500">%' +
+      promo +
+      '<span class="mr-auto font-black text-slate-600">₪<span data-mnet="' + l.productId + '">' + fmtMoney(price) + '</span> ליח׳</span>' +
+    '</div>' +
+  '</div>';
+}
+
+function manualCatalogRowHtml(p, absGap) {
+  const price = zgNet(zgGross(p), zgPct(p));
+  const fit = manualFitQty(price, absGap);
+  return '<button data-role="manual-pick" data-id="' + p.id + '" class="btn-tap w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border ' + (fit ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-white') + '">' +
+    '<span class="font-bold text-slate-700 text-sm truncate text-right">' + p.name + ' <span class="text-[10px] font-bold text-slate-400">(לא נסרק)</span></span>' +
+    '<span class="text-[11px] font-black whitespace-nowrap ' + (fit ? 'text-indigo-700' : 'text-slate-400') + '">' + (fit ? fit + ' יח׳ · ' : '') + '₪' + fmtMoney(price) + '</span>' +
+  '</button>';
+}
+
 function manualPickRowsHtml() {
   const gap = reconcileGap();
   const absGap = Math.abs(gap);
   const term = (manualSearchTerm || '').trim();
   const inRec = {}; (reconcileData || []).forEach(l => inRec[l.productId] = 1);
-  let cands = [];
-  (reconcileData || []).forEach(l => cands.push({ pid: l.productId, name: l.name, price: reconUnitNet(l), inRec: true }));
-  // בעודף — המוצר חייב להיות בין השורות שנסרקו; בחוסר — גם מוצר מהמאגר שלא נסרק כלל
-  if (gap > 0) products.forEach(p => { if (!inRec[p.id]) cands.push({ pid: p.id, name: p.name, price: zgNet(zgGross(p), zgPct(p)), inRec: false }); });
-  if (term) cands = cands.filter(c => (c.name || '').includes(term));
-  const fits = c => { if (c.price <= 0) return 0; const q = Math.round(absGap / c.price); return (q >= 1 && Math.abs(r2(q * c.price) - absGap) <= 0.05) ? q : 0; };
-  cands.forEach(c => c.fitQty = fits(c));
-  cands.sort((a, b) => ((b.fitQty ? 1 : 0) - (a.fitQty ? 1 : 0)) || ((b.inRec ? 1 : 0) - (a.inRec ? 1 : 0)) || (a.name || '').localeCompare(b.name || '', 'he'));
-  return cands.slice(0, 30).map(c =>
-    '<button data-role="manual-pick" data-id="' + c.pid + '" class="btn-tap w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border ' + (c.fitQty ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-white') + '">' +
-      '<span class="font-bold text-slate-700 text-sm truncate text-right">' + c.name + (c.inRec ? '' : ' <span class="text-[10px] font-bold text-slate-400">(לא נסרק)</span>') + '</span>' +
-      '<span class="text-[11px] font-black whitespace-nowrap ' + (c.fitQty ? 'text-indigo-700' : 'text-slate-400') + '">' + (c.fitQty ? c.fitQty + ' יח׳ · ' : '') + '₪' + fmtMoney(c.price) + '</span>' +
-    '</button>'
-  ).join('') || '<div class="text-center text-sm text-slate-400 font-bold py-4">לא נמצאו מוצרים</div>';
+
+  // 1. מה שנסרק — תמיד מוצג, ממוין: מה שמסביר את ההפרש קודם
+  let lines = (reconcileData || []).slice();
+  if (term) lines = lines.filter(l => (l.name || '').includes(term));
+  lines.sort((a, b) => (manualFitQty(reconUnitNet(b), absGap) ? 1 : 0) - (manualFitQty(reconUnitNet(a), absGap) ? 1 : 0)
+    || (a.name || '').localeCompare(b.name || '', 'he'));
+
+  let html = lines.length
+    ? '<div class="text-[11px] font-black text-slate-400 mb-1">מה שסרקת (' + lines.length + ')</div>' +
+      lines.map(l => manualScannedRowHtml(l, absGap)).join('')
+    : '';
+
+  // 2. מהמאגר — רק בחוסר, ורק אחרי שמחפשים. אחרת זו רשימה של מאות מוצרים.
+  if (gap > 0) {
+    if (term) {
+      const cat = products.filter(p => !inRec[p.id] && (p.name || '').includes(term))
+        .sort((a, b) => (manualFitQty(zgNet(zgGross(b), zgPct(b)), absGap) ? 1 : 0) - (manualFitQty(zgNet(zgGross(a), zgPct(a)), absGap) ? 1 : 0)
+          || (a.name || '').localeCompare(b.name || '', 'he'));
+      if (cat.length) {
+        html += '<div class="text-[11px] font-black text-slate-400 mt-3 mb-1">מהמאגר — לא נסרק (' + cat.length + ')</div>' +
+          cat.slice(0, 25).map(p => manualCatalogRowHtml(p, absGap)).join('');
+      }
+    } else {
+      const n = products.filter(p => !inRec[p.id]).length;
+      if (n) html += '<div class="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-2.5 text-[11px] font-bold text-slate-500 text-center">' +
+        'המוצר לא נסרק בכלל? חפש למעלה כדי לראות את שאר ' + n + ' המוצרים במאגר.</div>';
+    }
+  }
+  return html || '<div class="text-center text-sm text-slate-400 font-bold py-4">לא נמצאו מוצרים</div>';
 }
 async function manualApplyProduct(pid) {
   const gap = reconcileGap();
@@ -3815,7 +3868,7 @@ function renderReconcile() {
         });
       });
       body = '<div class="bg-white rounded-2xl border-2 border-indigo-200 p-4 shadow-sm mb-24">' +
-        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 3 · זיהוי אוטומטי</div>' +
+        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 5 · זיהוי אוטומטי</div>' +
         '<div class="font-black text-lg text-slate-800 mb-1"><i class="fa-solid fa-lightbulb text-indigo-500"></i> הבלש מצא ' + s.list.length + ' אפשרויות ל' + dir + ' של ₪' + fmtMoney(Math.abs(s.gap)) + '</div>' +
         '<div class="text-xs text-slate-500 font-bold mb-2">בדוק בתעודת הנייר מי מהם מופיע ' + (s.gap > 0 ? 'ולא נסרק' : 'בכמות נמוכה מהסריקה') + ':</div>' +
         promoCard +
@@ -3825,7 +3878,7 @@ function renderReconcile() {
     } else if (s.certain && !pc) {
       const it = g.items[0];
       body = '<div class="bg-white rounded-2xl border-2 border-indigo-200 p-4 shadow-sm mb-24">' +
-        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 3 · זיהוי אוטומטי</div>' +
+        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 5 · זיהוי אוטומטי</div>' +
         '<div class="font-black text-lg text-slate-800 mb-2"><i class="fa-solid fa-lightbulb text-indigo-500"></i> נראה שזה הפריט:</div>' +
         '<div class="bg-indigo-50 rounded-xl p-3 mb-3"><div class="font-black text-slate-800">' + dir + ': ' + g.qty + ' × ' + it.name + '</div><div class="text-xs text-slate-500 mt-0.5">₪' + fmtMoney(g.price) + ' ליח׳ · ₪' + fmtMoney(r2(g.qty * g.price)) + ' סה״כ' + detectiveTagsHtml(it) + '</div></div>' +
         '<button data-role="detective-pick" data-g="0" data-id="' + it.productId + '" class="btn-tap w-full bg-indigo-600 text-white rounded-xl py-3 font-black mb-2"><i class="fa-solid fa-check"></i> כן, זה נכון — אשר</button>' +
@@ -3837,7 +3890,7 @@ function renderReconcile() {
         '<button data-role="detective-pick" data-g="0" data-id="' + l.productId + '" class="btn-tap w-full flex items-center justify-between gap-2 p-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 mt-1.5"><span class="font-black text-slate-800 text-sm truncate text-right">' + l.name + detectiveTagsHtml(l) + '</span><i class="fa-solid fa-check text-indigo-600"></i></button>'
       ).join('');
       body = '<div class="bg-white rounded-2xl border-2 border-indigo-200 p-4 shadow-sm mb-24">' +
-        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 3 · זיהוי אוטומטי</div>' +
+        '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 5 · זיהוי אוטומטי</div>' +
         '<div class="font-black text-lg text-slate-800 mb-1"><i class="fa-solid fa-lightbulb text-indigo-500"></i> ' + dir + ': ' + g.qty + ' יח׳ במחיר ₪' + fmtMoney(g.price) + '</div>' +
         '<div class="text-xs text-slate-500 font-bold mb-2">₪' + fmtMoney(r2(g.qty * g.price)) + ' סה״כ — מתאים בדיוק להפרש.' + (g.items.length > 1 ? ' כל המוצרים כאן באותו מחיר, אז הסכום ייצא נכון בכל בחירה — בחר לפי מה שכתוב בנייר:' : '') + '</div>' +
         promoCard +
@@ -3850,7 +3903,7 @@ function renderReconcile() {
   else if (rcStep === 'choose') {
     // הבלש לא הצליח לזהות — העובד בוחר איך לבדוק
     body = '<div class="bg-white rounded-2xl border-2 border-slate-200 p-4 shadow-sm mb-24">' +
-      '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 3 · איך לבדוק?</div>' +
+      '<div class="text-xs font-black text-slate-400 mb-1">הבלש לא זיהה · בחר מסלול</div>' +
       '<div class="font-black text-lg text-slate-800 mb-1">הבלש לא הצליח לזהות לבד</div>' +
       '<div class="text-xs text-slate-500 font-bold mb-3 leading-relaxed">בחר איך למצוא את מקור ההפרש:</div>' +
       '<button data-role="rc-goto-manual" class="btn-tap w-full bg-indigo-600 text-white rounded-xl py-3.5 font-black mb-2 text-right px-4"><div><i class="fa-solid fa-hand-pointer"></i> בדיקה ידנית</div><div class="text-[11px] font-bold opacity-80 mt-0.5">מצא בנייר את המוצר שחסר / עודף ושייך אותו מרשימה</div></button>' +
@@ -3859,11 +3912,12 @@ function renderReconcile() {
   }
   else if (rcStep === 'manual') {
     body = '<div class="bg-white rounded-2xl border-2 border-indigo-200 p-4 shadow-sm mb-24">' +
-      '<div class="text-xs font-black text-slate-400 mb-1">שלב 1 מתוך 3 · בדיקה ידנית</div>' +
+      '<div class="text-xs font-black text-slate-400 mb-1">מסלול קצר · בדיקה ידנית</div>' +
       '<div class="font-black text-lg text-slate-800 mb-1">' + dir + ' של ₪' + fmtMoney(absGap) + ' — מה המוצר לפי הנייר?</div>' +
-      '<div class="text-xs text-slate-500 font-bold mb-2 leading-relaxed">מוצרים שהמחיר שלהם מתחלק בדיוק בהפרש מסומנים עם כמות מוצעת. לחיצה משייכת; אם המחיר לא מתחלק — תישאל כמה יחידות. אפשר לשייך כמה מוצרים בזה אחר זה עד שההפרש נסגר.</div>' +
+      '<div class="text-xs text-slate-500 font-bold mb-2 leading-relaxed">מוצרים שהמחיר שלהם מתחלק בדיוק בהפרש מסומנים עם כמות מוצעת. לחיצה על השם משייכת. <b>אם המחירון או ההנחה בנייר שונים ממה שרשום כאן — תקן בשדות, וההפרש יתעדכן מיד.</b></div>' +
       (manualAssigned.length ? '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 mb-2"><div class="text-[11px] font-black text-emerald-800 mb-1">שויך עד כה:</div>' + manualAssigned.map((a, i) => '<div class="flex items-center justify-between gap-2 text-sm font-bold text-emerald-900 mt-0.5"><span>' + (a.dir > 0 ? 'חסר' : 'עודף') + ' ' + a.qty + ' × ' + a.name + '</span><button data-role="manual-undo" data-i="' + i + '" class="btn-tap text-[11px] font-black text-rose-600 bg-white border border-rose-200 rounded-lg px-2 py-1">בטל</button></div>').join('') + '</div>' : '') +
-      '<input data-role="manual-search" type="text" value="' + htmlEscape(manualSearchTerm || '') + '" placeholder="חפש מוצר..." class="w-full h-11 px-3 font-bold border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-400 mb-2">' +
+      '<div class="relative mb-2"><i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>' +
+      '<input data-role="manual-search" type="text" value="' + htmlEscape(manualSearchTerm || '') + '" placeholder="חפש מוצר (גם כאלה שלא נסרקו)..." class="w-full h-11 pr-8 pl-3 font-bold border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-400"></div>' +
       '<div id="manualRows" class="space-y-1.5">' + manualPickRowsHtml() + '</div>' +
       '<button data-role="rc-goto-barcodes" class="btn-tap w-full bg-white border-2 border-slate-200 text-slate-600 rounded-xl py-2.5 font-black text-sm mt-3">לא מוצא — בדוק לפי הברקודים</button>' +
     '</div>';
@@ -3886,7 +3940,7 @@ function renderReconcile() {
       const needQty = noteCheckRes && (noteCheckRes.missing.length > 0 || (noteCheckRes.missing.length === 0 && noteCheckRes.extra.length === 0 && Math.abs(gap) > 1));
       const onlyExtra = noteCheckRes && noteCheckRes.missing.length === 0 && noteCheckRes.extra.length > 0;
       body = '<div class="bg-white rounded-2xl border-2 border-indigo-200 p-4 shadow-sm mb-24">' +
-        '<div class="text-xs font-black text-slate-400 mb-1">שלב 2 · בדיקה לפי הנייר</div>' +
+        '<div class="text-xs font-black text-slate-400 mb-1">שלב 2 מתוך 5 · ברקודים</div>' +
         '<div class="font-black text-lg text-slate-800 mb-1"><i class="fa-solid fa-keyboard text-indigo-500"></i> עבור על תעודת הנייר</div>' +
         '<div class="text-xs text-slate-500 mb-3 leading-relaxed">' + (needQty
           ? 'ליד כל ברקוד הקלד את הכמות שרשומה בנייר. השאר ריק אם המוצר לא בתעודה.'
@@ -6114,6 +6168,19 @@ app.addEventListener('input', (e) => {
   if (t.id === 'rfAddSearch') { refreshReceiptFixAddList(t.value); return; }
   if (t.id === 'rcDigits') { refreshReceivingDigits(t.value); return; }
   if (role === 'manual-search') { manualSearchTerm = t.value; const mr = $('manualRows'); if (mr) mr.innerHTML = manualPickRowsHtml(); return; }
+  if (role === 'manual-price' || role === 'manual-disc') {
+    const l = (reconcileData || []).find(x => x.productId === t.dataset.id); if (!l) return;
+    const n = parseFloat((t.value || '').toString().replace(',', '.').replace(/[^0-9.]/g, ''));
+    if (role === 'manual-price') l.gross = (isFinite(n) && n >= 0) ? r2(n) : 0;
+    else l.pct = (isFinite(n) && n >= 0 && n < 100) ? r2(n) : 0;
+    l.paperTotal = null;
+    l.price = r2(reconUnitNet(l));
+    // מעדכנים רק את המחיר בשורה ואת הכותרת — רינדור מלא היה גונב את המיקוד מהשדה
+    const net = app.querySelector('[data-mnet="' + l.productId + '"]');
+    if (net) net.textContent = fmtMoney(reconUnitNet(l));
+    refreshReconcileHeader();
+    return;
+  }
   if (role === 'rc-recon-note') { reconcileSetNoteLive(t.dataset.id, t.value); return; }
   if (role === 'rc-recon-recv') { reconcileSetRecvLive(t.dataset.id, t.value); return; }
   if (role === 'nc-digit') {
@@ -6222,6 +6289,11 @@ app.addEventListener('input', (e) => {
 app.addEventListener('change', (e) => {
   const t = e.target;
   if (t && t.id === 'backupImportFile') { handleBackupFile(t.files && t.files[0]); return; }
+  const role = t && t.getAttribute && t.getAttribute('data-role');
+  if (role === 'manual-price' || role === 'manual-disc') {
+    // יציאה מהשדה — מרעננים כדי שסימוני "מתחלק בהפרש" יהיו נכונים
+    const mr = $('manualRows'); if (mr) mr.innerHTML = manualPickRowsHtml();
+  }
 });
 
 app.addEventListener('keydown', (e) => {
